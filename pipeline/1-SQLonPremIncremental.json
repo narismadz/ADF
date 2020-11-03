@@ -1,0 +1,215 @@
+{
+	"name": "1-SQLonPremIncremental",
+	"properties": {
+		"activities": [
+			{
+				"name": "LegacySensorReadingLastInserted",
+				"description": "Retrive a dataset from any data sources that supported by ADF",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": "SELECT * FROM [dbo].[IncrementalWatermarks] WHERE TableName = 'LegacySensorReadings'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "AzureSqlTable1",
+						"type": "DatasetReference"
+					}
+				}
+			},
+			{
+				"name": "MaxLegacySensorReadingId",
+				"description": "Retrive a dataset from any data sources that supported by ADF",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": {
+							"value": "SELECT MAX(Id) as MaxId from LegacySensorReadings",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SqlServerTable1",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": true
+				}
+			},
+			{
+				"name": "LegacySensorReadings",
+				"description": "Copy data btw data store located on-premise and in the cloud",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "MaxLegacySensorReadingId",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "LegacySensorReadingLastInserted",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": {
+							"value": "SELECT * FROM LegacySensorReadings\nWHERE id > @{activity('LegacySensorReadingLastInserted').output.firstRow.LastInsertedId}\nAND id <= @{activity('MaxLegacySensorReadingId').output.firstRow.MaxId}",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "AzureSqlSink"
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"mappings": [
+							{
+								"source": {
+									"name": "Id",
+									"type": "Int32"
+								},
+								"sink": {
+									"name": "Id",
+									"type": "Int32"
+								}
+							},
+							{
+								"source": {
+									"name": "ReadingId",
+									"type": "String"
+								},
+								"sink": {
+									"name": "ReadingId",
+									"type": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "ReadingDateTime",
+									"type": "DateTime"
+								},
+								"sink": {
+									"name": "ReadingDateTime",
+									"type": "DateTime"
+								}
+							},
+							{
+								"source": {
+									"name": "LocationId",
+									"type": "Int16"
+								},
+								"sink": {
+									"name": "LocationId",
+									"type": "Int16"
+								}
+							},
+							{
+								"source": {
+									"name": "PollutionLevel",
+									"type": "Byte"
+								},
+								"sink": {
+									"name": "PollutionLevel",
+									"type": "Byte"
+								}
+							}
+						]
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "SqlServerTable1",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "AzureLegacySensorReadingsDS",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "UpdateLegacySensorReadingLastInserted",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "LegacySensorReadings",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[dbo].[spUpdateIncrementalWatermark]",
+					"storedProcedureParameters": {
+						"id": {
+							"value": {
+								"value": "@{activity('MaxLegacySensorReadingId').output.firstRow.MaxId}",
+								"type": "Expression"
+							},
+							"type": "Int16"
+						},
+						"TableName": {
+							"value": "LegacySensorReadings",
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "AzureSqlDatabase1",
+					"type": "LinkedServiceReference"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2020-03-13T05:53:06Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

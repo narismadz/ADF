@@ -1,0 +1,40 @@
+{
+	"name": "Copy from REST connector into ADLS Gen2",
+	"properties": {
+		"activities": [
+			{
+				"name": "GetBearerToken",
+				"description": "Use this Web activity to get bearer token",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": "  https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token",
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/x-www-form-urlencoded"
+					},
+					"body": "client_id=53bbc3a0-95c0-4136-a305-4f26e54b5432&client_secret=X?a--W.y11Q6PC6DsZ7sS4?aOci[taTF&grant_type=client_credentials&resource=https://management.azure.com/"
+				}
+			}
+		],
+		"parameters": {
+			"SinkContainer": {
+				"type": "string"
+			},
+			"SinkDirectory": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2020-10-09T07:52:07Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

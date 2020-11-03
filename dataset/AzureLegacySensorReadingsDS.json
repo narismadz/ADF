@@ -1,0 +1,43 @@
+{
+	"name": "AzureLegacySensorReadingsDS",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureSqlDatabase1",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "AzureSqlTable",
+		"schema": [
+			{
+				"name": "Id",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "ReadingId",
+				"type": "varchar"
+			},
+			{
+				"name": "ReadingDateTime",
+				"type": "datetime",
+				"precision": 23,
+				"scale": 3
+			},
+			{
+				"name": "LocationId",
+				"type": "smallint",
+				"precision": 5
+			},
+			{
+				"name": "PollutionLevel",
+				"type": "tinyint",
+				"precision": 3
+			}
+		],
+		"typeProperties": {
+			"schema": "dbo",
+			"table": "LegacySensorReadings"
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

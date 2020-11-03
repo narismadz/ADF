@@ -1,0 +1,35 @@
+{
+	"name": "copydatasync",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureBlobStorage1",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobStorageLocation",
+				"container": "copydatasync"
+			}
+		},
+		"schema": {
+			"type": "object",
+			"properties": {
+				"readingId": {
+					"type": "string"
+				},
+				"readingDateTime": {
+					"type": "string"
+				},
+				"locationId": {
+					"type": "integer"
+				},
+				"pollutionLevel": {
+					"type": "integer"
+				}
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

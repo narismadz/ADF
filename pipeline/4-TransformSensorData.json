@@ -1,0 +1,363 @@
+{
+	"name": "4-TransformSensorData",
+	"properties": {
+		"description": "Move between containers from copydatasync to sensor-sink-stage. Then sent to Databricks and notify via email (LogicApps)",
+		"activities": [
+			{
+				"name": "Fromcopydatasync",
+				"type": "GetMetadata",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "copydatasync",
+						"type": "DatasetReference"
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobStorageReadSettings",
+						"recursive": true
+					}
+				}
+			},
+			{
+				"name": "OnlyFolder_metadata",
+				"type": "Filter",
+				"dependsOn": [
+					{
+						"activity": "Fromcopydatasync",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Fromcopydatasync').output.childitems",
+						"type": "Expression"
+					},
+					"condition": {
+						"value": "@equals(item().type, 'File')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "MoveFiles",
+				"description": "Copy+Delete since there is no move activity for ADF. For each consists of sub activities.",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "OnlyFolder_metadata",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Fromcopydatasync').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 30,
+					"activities": [
+						{
+							"name": "CopyFile",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "BinarySource",
+									"storeSettings": {
+										"type": "AzureBlobStorageReadSettings",
+										"recursive": true
+									}
+								},
+								"sink": {
+									"type": "BinarySink",
+									"storeSettings": {
+										"type": "AzureBlobStorageWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "ReusableBlobDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"folder": {
+											"value": "@pipeline().parameters.BlobSource",
+											"type": "Expression"
+										},
+										"file": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "ReusableBlobDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"folder": {
+											"value": "@pipeline().parameters.BlobDestination",
+											"type": "Expression"
+										},
+										"file": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "DeleteFile",
+							"type": "Delete",
+							"dependsOn": [
+								{
+									"activity": "CopyFile",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "ReusableBlobDS",
+									"type": "DatasetReference",
+									"parameters": {
+										"folder": {
+											"value": "@pipeline().parameters.BlobSource",
+											"type": "Expression"
+										},
+										"file": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								},
+								"enableLogging": false,
+								"storeSettings": {
+									"type": "AzureBlobStorageReadSettings",
+									"recursive": true
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Notebook1",
+				"type": "DatabricksNotebook",
+				"dependsOn": [
+					{
+						"activity": "MoveFiles",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"notebookPath": "/TransformEnrichPollutionData",
+					"baseParameters": {
+						"storage_container_name": {
+							"value": "@pipeline().parameters.BlobDestination",
+							"type": "Expression"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "AzureDatabricks1",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "Logic-Apps-Success",
+				"description": "Get endpoint in Azure Logic App\n\"When a HTTP request is received\"",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "DeleteDestinationSource",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": {
+						"value": "https://prod-25.southeastasia.logic.azure.com:443/workflows/57cd5966531d4ed5aad195f6a8a68741/triggers/manual/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=j8WbIyIMBzOjC_wdmMGNGQzgf91pPokbGNh0WwRZ3R0",
+						"type": "Expression"
+					},
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"value": "{   \n   \"DataFactoryName\": \"@{pipeline().DataFactory}\",\n   \"PipelineName\": \"@{pipeline().Pipeline}\",\n   \"Subject\": \"Successful pipeline execution.\",\n   \"ErrorMessage\": \"No errors.\",\n   \"EmailTo\": \"a-narli@microsoft.com\"\n}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Logic-Apps-Failed",
+				"description": "Get endpoint in Azure Logic App\n\"When a HTTP request is received\"",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Notebook1",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "MoveFiles",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "OnlyFolder_metadata",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "Fromcopydatasync",
+						"dependencyConditions": [
+							"Failed"
+						]
+					},
+					{
+						"activity": "DeleteDestinationSource",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": {
+						"value": "https://prod-25.southeastasia.logic.azure.com:443/workflows/57cd5966531d4ed5aad195f6a8a68741/triggers/manual/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=j8WbIyIMBzOjC_wdmMGNGQzgf91pPokbGNh0WwRZ3R0",
+						"type": "Expression"
+					},
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"value": "{\n   \"DataFactoryName\": \"@{pipeline().DataFactory}\",\n   \"PipelineName\": \"@{pipeline().Pipeline}\",\n   \"Subject\": \"Pipeline execution failed.\",\n   \"ErrorMessage\": \"Please see logs for more information.\",\n   \"EmailTo\": \"hello@softwaredeveloper.io\"\n}",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "DeleteDestinationSource",
+				"type": "Delete",
+				"dependsOn": [
+					{
+						"activity": "Notebook1",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "ReusableBlobDS",
+						"type": "DatasetReference",
+						"parameters": {
+							"folder": {
+								"value": "@pipeline().parameters.BlobDestination",
+								"type": "Expression"
+							},
+							"file": {
+								"value": "*.json",
+								"type": "Expression"
+							}
+						}
+					},
+					"enableLogging": false,
+					"storeSettings": {
+						"type": "AzureBlobStorageReadSettings",
+						"recursive": true
+					}
+				}
+			}
+		],
+		"parameters": {
+			"BlobSource": {
+				"type": "string",
+				"defaultValue": "copydatasync"
+			},
+			"BlobDestination": {
+				"type": "string",
+				"defaultValue": "sensor-sink-stage"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2020-03-13T09:49:49Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
